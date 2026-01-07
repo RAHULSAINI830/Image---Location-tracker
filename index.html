@@ -3,151 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Strict Camera Tracker</title>
+    <title>Google Drive Photo Tracker</title>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #000; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .container { text-align: center; width: 90%; max-width: 400px; }
-        
-        /* The "Shutter" Button */
-        .btn-camera {
-            background: white;
-            border: 5px solid #444;
-            width: 90px;
-            height: 90px;
-            border-radius: 50%;
-            cursor: pointer;
-            font-size: 30px;
-            box-shadow: 0 0 20px rgba(255,255,255,0.2);
-            transition: transform 0.1s;
-        }
-        .btn-camera:active { transform: scale(0.9); }
-        
-        #preview { width: 100%; border-radius: 15px; margin-top: 20px; display: none; border: 1px solid #333; }
-        
-        .info-card {
-            background: #1c1c1e;
-            padding: 15px;
-            border-radius: 12px;
-            margin-top: 20px;
-            text-align: left;
-            display: none;
-        }
-        .status-badge { font-size: 11px; font-weight: bold; padding: 3px 8px; border-radius: 5px; margin-bottom: 8px; display: inline-block; }
-        .live-bg { background: #007aff; }
-        .exif-bg { background: #34c759; }
-        
-        .btn-map {
-            display: block;
-            background: #0a84ff;
-            color: white;
-            text-decoration: none;
-            padding: 12px;
-            border-radius: 8px;
-            margin-top: 15px;
-            text-align: center;
-            font-weight: bold;
-        }
+        body { font-family: -apple-system, sans-serif; background: #121212; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .container { text-align: center; width: 90%; max-width: 400px; padding: 20px; }
+        .btn-camera { background: #fff; border: 6px solid #333; width: 80px; height: 80px; border-radius: 50%; cursor: pointer; margin-bottom: 20px; font-size: 30px; transition: 0.2s; }
+        .btn-camera:active { transform: scale(0.9); background: #ccc; }
+        #preview { width: 100%; border-radius: 15px; margin-top: 15px; display: none; border: 1px solid #333; }
+        .info-card { background: #1e1e1e; padding: 20px; border-radius: 15px; margin-top: 20px; text-align: left; display: none; border: 1px solid #333; }
+        .address-text { color: #ffca28; font-weight: bold; margin-bottom: 10px; font-size: 14px; line-height: 1.4; }
+        .status-msg { font-size: 14px; color: #007aff; margin-top: 10px; font-weight: bold; min-height: 20px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Snap & Track</h2>
-    <p style="color: #888;">Camera will open automatically</p>
+    <h2>Photo Tracker</h2>
+    <p style="color: #666;">Saving to Google Drive & Sheets</p>
 
     <input type="file" id="camInput" accept="image/*" capture="environment" style="display: none;">
-    
     <button class="btn-camera" onclick="document.getElementById('camInput').click()">📸</button>
 
+    <div id="status" class="status-msg">Initializing GPS...</div>
     <img id="preview" alt="Captured Photo">
 
     <div id="infoCard" class="info-card">
-        <div id="source" class="status-badge"></div>
-        <div id="coords" style="font-family: monospace;"></div>
-        <a id="mapLink" class="btn-map" target="_blank">View on Map</a>
+        <div id="addressDisplay" class="address-text">Fetching address...</div>
+        <div id="coordsDisplay" style="color: #aaa; font-size: 11px; font-family: monospace;"></div>
     </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
 
 <script>
-    let deviceLat = null;
-    let deviceLon = null;
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz34Dsv4JsG71z2U5C2uM2RbSqeyuPgQbJx6q4xL0_4za7ucSiCrGXBwOxS-h4H26Kc/exec";
+    
+    let liveLat = null, liveLon = null;
 
-    // 1. Request GPS immediately when page loads
-    window.onload = function() {
+    // Get live GPS on start
+    window.onload = () => {
         if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    deviceLat = pos.coords.latitude;
-                    deviceLon = pos.coords.longitude;
-                },
-                (err) => { alert("Location access is required for this tool."); },
-                { enableHighAccuracy: true }
-            );
+            navigator.geolocation.getCurrentPosition(p => {
+                liveLat = p.coords.latitude;
+                liveLon = p.coords.longitude;
+                document.getElementById('status').innerText = "✅ GPS Ready";
+            }, err => {
+                document.getElementById('status').innerText = "⚠️ Please allow GPS access.";
+            }, { enableHighAccuracy: true });
         }
     };
 
-    document.getElementById('camInput').onchange = function(e) {
+    document.getElementById('camInput').onchange = async function(e) {
         const file = e.target.files[0];
         if (!file) return;
 
-        // Show image preview
+        const statusLabel = document.getElementById('status');
+        statusLabel.innerText = "⏳ Processing & Saving...";
+
+        // Show Preview
         const reader = new FileReader();
-        reader.onload = (event) => {
-            const preview = document.getElementById('preview');
-            preview.src = event.target.result;
-            preview.style.display = "block";
+        reader.onload = (ev) => { 
+            const img = document.getElementById('preview');
+            img.src = ev.target.result;
+            img.style.display = "block";
         };
         reader.readAsDataURL(file);
 
-        // 2. Metadata Check with Auto-Fallback
-        EXIF.getData(file, function() {
-            const exifLat = EXIF.getTag(this, "GPSLatitude");
-            const exifLon = EXIF.getTag(this, "GPSLongitude");
+        // Process Location
+        EXIF.getData(file, async function() {
+            let lat = EXIF.getTag(this, "GPSLatitude");
+            let lon = EXIF.getTag(this, "GPSLongitude");
+            
+            let finalLat = liveLat, finalLon = liveLon;
 
-            let lat, lon, isExif;
-
-            if (exifLat && exifLon) {
-                // Use data from the photo file itself
+            if (lat && lon) {
                 const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
                 const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
-                lat = convertToDecimal(exifLat, latRef);
-                lon = convertToDecimal(exifLon, lonRef);
-                isExif = true;
-            } else if (deviceLat !== null) {
-                // Fallback to the live location we grabbed on load
-                lat = deviceLat;
-                lon = deviceLon;
-                isExif = false;
-            } else {
-                alert("Could not determine location. Please ensure GPS is ON.");
+                finalLat = convertToDecimal(lat, latRef);
+                finalLon = convertToDecimal(lon, lonRef);
+            }
+
+            if (finalLat === null) {
+                alert("GPS not found. Ensure location is enabled.");
+                statusLabel.innerText = "❌ GPS Error";
                 return;
             }
 
-            displayResult(lat, lon, isExif);
+            // Get Address and Send to Google
+            try {
+                const resp = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${finalLat}&lon=${finalLon}`);
+                const addrData = await resp.json();
+                const address = addrData.display_name || "Address Unknown";
+
+                // UPLOAD TO GOOGLE DRIVE/SHEETS
+                await uploadToGoogle(file, finalLat, finalLon, address);
+            } catch (err) {
+                console.error(err);
+                statusLabel.innerText = "❌ Connection Error";
+            }
         });
     };
 
-    function displayResult(lat, lon, isExif) {
-        document.getElementById('infoCard').style.display = "block";
-        const source = document.getElementById('source');
-        source.innerText = isExif ? "GPS: FROM PHOTO" : "GPS: LIVE FALLBACK";
-        source.className = isExif ? "status-badge exif-bg" : "status-badge live-bg";
+    async function uploadToGoogle(file, lat, lon, address) {
+        const statusLabel = document.getElementById('status');
         
-        document.getElementById('coords').innerHTML = `LAT: ${lat.toFixed(6)}<br>LON: ${lon.toFixed(6)}`;
-        document.getElementById('mapLink').href = `https://www.google.com/maps?q=${lat},${lon}`;
+        // Convert image to Base64
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = async () => {
+            const base64Image = reader.result;
+
+            const payload = {
+                image: base64Image,
+                lat: lat,
+                lon: lon,
+                address: address
+            };
+
+            try {
+                // Use 'no-cors' mode because Google Apps Script doesn't return standard CORS headers
+                await fetch(SCRIPT_URL, {
+                    method: "POST",
+                    mode: "no-cors", 
+                    body: JSON.stringify(payload)
+                });
+                
+                // Because of 'no-cors', we won't get a 'Success' message, but if it doesn't catch, it likely worked.
+                statusLabel.innerText = "✅ Saved to Drive & Sheets!";
+                document.getElementById('infoCard').style.display = "block";
+                document.getElementById('addressDisplay').innerText = "📍 " + address;
+                document.getElementById('coordsDisplay').innerText = `LAT: ${lat.toFixed(6)} | LON: ${lon.toFixed(6)}`;
+            } catch (error) {
+                console.error(error);
+                statusLabel.innerText = "❌ Failed to Save";
+            }
+        };
     }
 
-    function convertToDecimal(gpsData, ref) {
-        let d = gpsData[0].numerator / gpsData[0].denominator;
-        let m = gpsData[1].numerator / gpsData[1].denominator;
-        let s = gpsData[2].numerator / gpsData[2].denominator;
-        let decimal = d + (m / 60) + (s / 3600);
-        if (ref === "S" || ref === "W") decimal = decimal * -1;
-        return decimal;
+    function convertToDecimal(gps, ref) {
+        let d = gps[0].numerator/gps[0].denominator + (gps[1].numerator/gps[1].denominator)/60 + (gps[2].numerator/gps[2].denominator)/3600;
+        return (ref === "S" || ref === "W") ? d * -1 : d;
     }
 </script>
-
 </body>
 </html>
