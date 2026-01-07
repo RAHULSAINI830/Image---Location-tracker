@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Location Tracker</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        h2 { color: #333; margin-top: 0; }
+        input[type="file"] { margin: 20px 0; }
+        #preview {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #f9f9f9;
+        }
+        .btn-map {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 10px 20px;
+            background-color: #4285F4;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .btn-map:hover { background-color: #357ae8; }
+        #status { font-weight: bold; color: #555; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>📷 Location Finder</h2>
+        <p>Upload an original photo to extract its GPS data.</p>
+        
+        <input type="file" id="upload" accept="image/jpeg">
+        
+        <img id="preview" src="" alt="Photo Preview">
+
+        <div id="result">
+            <p id="status">Waiting for file...</p>
+            <p id="coords"></p>
+            <a id="mapLink" class="btn-map" target="_blank" style="display:none;">Open in Google Maps</a>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+
+    <script>
+        document.getElementById('upload').onchange = function(e) {
+            const file = e.target.files[0];
+            const status = document.getElementById('status');
+            const coords = document.getElementById('coords');
+            const mapLink = document.getElementById('mapLink');
+            const preview = document.getElementById('preview');
+
+            if (!file) return;
+
+            // 1. Show Image Preview
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                preview.src = event.target.result;
+                preview.style.display = "block";
+            };
+            reader.readAsDataURL(file);
+
+            status.innerText = "Analyzing metadata...";
+
+            // 2. Extract EXIF Data
+            EXIF.getData(file, function() {
+                const lat = EXIF.getTag(this, "GPSLatitude");
+                const lon = EXIF.getTag(this, "GPSLongitude");
+                const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
+                const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
+
+                if (lat && lon) {
+                    const latDec = convertToDecimal(lat, latRef);
+                    const lonDec = convertToDecimal(lon, lonRef);
+
+                    status.innerText = "📍 Location Found!";
+                    coords.innerText = `Latitude: ${latDec.toFixed(6)}\nLongitude: ${lonDec.toFixed(6)}`;
+                    
+                    mapLink.href = `https://www.google.com/maps?q=${latDec},${lonDec}`;
+                    mapLink.style.display = "inline-block";
+                } else {
+                    status.innerText = "❌ No GPS data found.";
+                    coords.innerText = "This usually happens if the photo was taken with location turned off or if it was sent via a messaging app.";
+                    mapLink.style.display = "none";
+                }
+            });
+        };
+
+        // Helper: Convert EXIF format [degrees, minutes, seconds] to Decimal
+        function convertToDecimal(gpsData, ref) {
+            let decimal = gpsData[0].numerator / gpsData[0].denominator +
+                          (gpsData[1].numerator / gpsData[1].denominator) / 60 +
+                          (gpsData[2].numerator / gpsData[2].denominator) / 3600;
+            if (ref === "S" || ref === "W") decimal = decimal * -1;
+            return decimal;
+        }
+    </script>
+</body>
+</html>
