@@ -3,126 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Photo Location Tracker</title>
+    <title>Universal Photo Tracker</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f4f7f6;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .card {
-            background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            text-align: center;
-            max-width: 400px;
-            width: 90%;
-        }
-        h2 { color: #333; margin-top: 0; }
-        input[type="file"] { margin: 20px 0; }
-        #preview {
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            margin-top: 15px;
-            display: none;
-        }
-        #result {
-            margin-top: 20px;
-            padding: 15px;
-            border-radius: 8px;
-            background: #f9f9f9;
-        }
-        .btn-map {
-            display: inline-block;
-            margin-top: 10px;
-            padding: 10px 20px;
-            background-color: #4285F4;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-weight: bold;
-        }
-        .btn-map:hover { background-color: #357ae8; }
-        #status { font-weight: bold; color: #555; }
+        body { font-family: sans-serif; background: #eceff1; display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 25px rgba(0,0,0,0.1); width: 100%; max-width: 450px; text-align: center; }
+        #preview { width: 100%; border-radius: 10px; margin: 15px 0; display: none; border: 1px solid #ddd; }
+        .info { background: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 15px; border-left: 5px solid #4285F4; text-align: left; }
+        .btn-map { display: none; margin-top: 15px; padding: 12px; background: #4285F4; color: white; text-decoration: none; border-radius: 8px; font-weight: bold; text-align: center; }
+        .loader { display: none; color: #4285F4; font-weight: bold; margin: 10px 0; }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <h2>📷 Location Finder</h2>
-        <p>Upload an original photo to extract its GPS data.</p>
-        
-        <input type="file" id="upload" accept="image/jpeg">
-        
-        <img id="preview" src="" alt="Photo Preview">
+<div class="card">
+    <h2>🌍 Universal Photo Tracker</h2>
+    <p>Upload any photo (JPG, PNG, HEIC)</p>
+    
+    <input type="file" id="upload" accept="image/*">
+    
+    <div id="loader" class="loader">Converting/Processing...</div>
+    <img id="preview" src="" alt="Preview">
 
-        <div id="result">
-            <p id="status">Waiting for file...</p>
-            <p id="coords"></p>
-            <a id="mapLink" class="btn-map" target="_blank" style="display:none;">Open in Google Maps</a>
-        </div>
+    <div class="info">
+        <div id="status">Waiting for file...</div>
+        <div id="coords" style="margin-top:5px; font-family: monospace; font-size: 0.9em;"></div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+    <a id="mapLink" class="btn-map" target="_blank">📍 View on Google Maps</a>
+</div>
 
-    <script>
-        document.getElementById('upload').onchange = function(e) {
-            const file = e.target.files[0];
-            const status = document.getElementById('status');
-            const coords = document.getElementById('coords');
-            const mapLink = document.getElementById('mapLink');
-            const preview = document.getElementById('preview');
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.3/dist/heic2any.min.js"></script>
 
-            if (!file) return;
+<script>
+    const upload = document.getElementById('upload');
+    const status = document.getElementById('status');
+    const coords = document.getElementById('coords');
+    const mapLink = document.getElementById('mapLink');
+    const preview = document.getElementById('preview');
+    const loader = document.getElementById('loader');
 
-            // 1. Show Image Preview
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                preview.src = event.target.result;
-                preview.style.display = "block";
-            };
-            reader.readAsDataURL(file);
+    upload.onchange = async function(e) {
+        let file = e.target.files[0];
+        if (!file) return;
 
-            status.innerText = "Analyzing metadata...";
+        loader.style.display = "block";
+        status.innerText = "Analyzing file...";
+        coords.innerText = "";
+        mapLink.style.display = "none";
+        preview.style.display = "none";
 
-            // 2. Extract EXIF Data
-            EXIF.getData(file, function() {
-                const lat = EXIF.getTag(this, "GPSLatitude");
-                const lon = EXIF.getTag(this, "GPSLongitude");
+        // 1. Handle HEIC conversion if necessary
+        if (file.name.toLowerCase().endsWith(".heic")) {
+            try {
+                const convertedBlob = await heic2any({ blob: file, toType: "image/jpeg" });
+                file = new File([convertedBlob], file.name.replace(/\.heic/i, ".jpg"), { type: "image/jpeg" });
+            } catch (err) {
+                console.error("HEIC conversion failed", err);
+            }
+        }
+
+        // 2. Show Preview
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            preview.src = event.target.result;
+            preview.style.display = "block";
+            loader.style.display = "none";
+        };
+        reader.readAsDataURL(file);
+
+        // 3. Extract GPS Data
+        EXIF.getData(file, function() {
+            const lat = EXIF.getTag(this, "GPSLatitude");
+            const lon = EXIF.getTag(this, "GPSLongitude");
+
+            if (lat && lon) {
                 const latRef = EXIF.getTag(this, "GPSLatitudeRef") || "N";
                 const lonRef = EXIF.getTag(this, "GPSLongitudeRef") || "E";
+                
+                const latDec = convertToDecimal(lat, latRef);
+                const lonDec = convertToDecimal(lon, lonRef);
 
-                if (lat && lon) {
-                    const latDec = convertToDecimal(lat, latRef);
-                    const lonDec = convertToDecimal(lon, lonRef);
+                status.innerHTML = "✅ <strong>Location Found!</strong>";
+                coords.innerHTML = `Latitude: ${latDec.toFixed(6)}<br>Longitude: ${lonDec.toFixed(6)}`;
+                
+                mapLink.href = `https://www.google.com/maps?q=${latDec},${lonDec}`;
+                mapLink.style.display = "block";
+            } else {
+                status.innerText = "❌ No Location Data Found";
+                alert("This file has no GPS coordinates.\n\nNote: Messaging apps (WhatsApp/Telegram) and screenshots do not contain location data.");
+                coords.innerText = "Try an original camera photo.";
+            }
+        });
+    };
 
-                    status.innerText = "📍 Location Found!";
-                    coords.innerText = `Latitude: ${latDec.toFixed(6)}\nLongitude: ${lonDec.toFixed(6)}`;
-                    
-                    mapLink.href = `https://www.google.com/maps?q=${latDec},${lonDec}`;
-                    mapLink.style.display = "inline-block";
-                } else {
-                    status.innerText = "❌ No GPS data found.";
-                    coords.innerText = "This usually happens if the photo was taken with location turned off or if it was sent via a messaging app.";
-                    mapLink.style.display = "none";
-                }
-            });
-        };
+    function convertToDecimal(gpsData, ref) {
+        let d = gpsData[0].numerator / gpsData[0].denominator;
+        let m = gpsData[1].numerator / gpsData[1].denominator;
+        let s = gpsData[2].numerator / gpsData[2].denominator;
+        let decimal = d + (m / 60) + (s / 3600);
+        if (ref === "S" || ref === "W") decimal = decimal * -1;
+        return decimal;
+    }
+</script>
 
-        // Helper: Convert EXIF format [degrees, minutes, seconds] to Decimal
-        function convertToDecimal(gpsData, ref) {
-            let decimal = gpsData[0].numerator / gpsData[0].denominator +
-                          (gpsData[1].numerator / gpsData[1].denominator) / 60 +
-                          (gpsData[2].numerator / gpsData[2].denominator) / 3600;
-            if (ref === "S" || ref === "W") decimal = decimal * -1;
-            return decimal;
-        }
-    </script>
 </body>
 </html>
